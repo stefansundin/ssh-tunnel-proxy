@@ -1,0 +1,22 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    bcrypt_pbkdf (1.0.0)
+    ffi (1.9.18)
+    net-ssh (4.2.0)
+    rbnacl (4.0.2)
+      ffi
+    rbnacl-libsodium (1.0.15.1)
+      rbnacl (>= 3.0.1)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  bcrypt_pbkdf
+  net-ssh
+  rbnacl (>= 3.2.0, < 5.0)
+  rbnacl-libsodium
+
+BUNDLED WITH
+   1.16.0
