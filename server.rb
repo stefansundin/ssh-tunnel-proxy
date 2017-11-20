@@ -54,32 +54,26 @@ loop do
     tunnels.each do |tunnel|
       if sock == tunnel[:server_socket]
         printf "/"
-        if tunnel[:ssh]
-          client_socket = tunnel[:server_socket].accept
-          tunnel[:pending_conns].push(client_socket)
-        else
+        tunnel[:pending_conns].push(tunnel[:server_socket].accept)
+        if !tunnel[:ssh]
           tunnel[:ssh] = true
           puts
           puts "Opening SSH connection to #{tunnel[:host]}:#{tunnel[:remote_port]}#{tunnel[:proxy_jump] ? " (via #{tunnel[:proxy_jump]})":""}..."
           tunnel[:thread] = Thread.new do
-            client_socket = tunnel[:server_socket].accept
             opts = {}
             if tunnel[:proxy_jump]
               opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel[:proxy_jump])
             end
             tunnel[:ssh] = Net::SSH.start(tunnel[:host], tunnel[:user], opts)
             tunnel[:forwarded_port] = tunnel[:ssh].forward.local(0, tunnel[:remote_host], tunnel[:remote_port])
-            # add the connection to the pool
-            upstream_socket = TCPSocket.new("localhost", tunnel[:forwarded_port])
-            tunnel[:conns].push([client_socket, upstream_socket])
             # process SSH communication
             while run_ssh_thread do
-              tunnel[:ssh].process(0.01)
               while !tunnel[:pending_conns].empty?
                 client_socket = tunnel[:pending_conns].pop
                 upstream_socket = TCPSocket.new("localhost", tunnel[:forwarded_port])
                 tunnel[:conns].push([client_socket, upstream_socket])
               end
+              tunnel[:ssh].process(0.01)
               Thread.pass
             end
           end
