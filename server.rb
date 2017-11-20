@@ -40,38 +40,50 @@ tunnels.each do |tunnel|
   tunnel[:server_socket] = TCPServer.new(tunnel[:local_interface], tunnel[:local_port])
   tunnel[:server_socket].listen(128)
   tunnel[:conns] = []
+  tunnel[:pending_conns] = []
 end
+
+puts "Started listening on ports: #{tunnels.map { |t| t[:local_port] }}"
+
 
 loop do
   sockets = tunnels.map { |t| [t[:server_socket], t[:conns]] }.flatten
-  result = IO.select(sockets)
+  result = IO.select(sockets, nil, nil, 1) # We have to use a timeout to pick up new connections that were pending
+  next if result == nil
   result[0].each do |sock|
     tunnels.each do |tunnel|
       if sock == tunnel[:server_socket]
-        client_socket = tunnel[:server_socket].accept
-
-        if !tunnel[:ssh]
-          puts "Opening SSH connection to #{tunnel[:host]}:#{tunnel[:remote_port]} #{tunnel[:proxy_jump] ? " (via #{tunnel[:proxy_jump]})":""}..."
-          opts = {}
-          if tunnel[:proxy_jump]
-            opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel[:proxy_jump])
-          end
-          tunnel[:ssh] = Net::SSH.start(tunnel[:host], tunnel[:user], opts)
-          tunnel[:forwarded_port] = tunnel[:ssh].forward.local(0, tunnel[:remote_host], tunnel[:remote_port])
-
+        printf "/"
+        if tunnel[:ssh]
+          client_socket = tunnel[:server_socket].accept
+          tunnel[:pending_conns].push(client_socket)
+        else
+          tunnel[:ssh] = true
+          puts
+          puts "Opening SSH connection to #{tunnel[:host]}:#{tunnel[:remote_port]}#{tunnel[:proxy_jump] ? " (via #{tunnel[:proxy_jump]})":""}..."
           tunnel[:thread] = Thread.new do
+            client_socket = tunnel[:server_socket].accept
+            opts = {}
+            if tunnel[:proxy_jump]
+              opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel[:proxy_jump])
+            end
+            tunnel[:ssh] = Net::SSH.start(tunnel[:host], tunnel[:user], opts)
+            tunnel[:forwarded_port] = tunnel[:ssh].forward.local(0, tunnel[:remote_host], tunnel[:remote_port])
+            # add the connection to the pool
+            upstream_socket = TCPSocket.new("localhost", tunnel[:forwarded_port])
+            tunnel[:conns].push([client_socket, upstream_socket])
+            # process SSH communication
             while run_ssh_thread do
               tunnel[:ssh].process(0.01)
+              while !tunnel[:pending_conns].empty?
+                client_socket = tunnel[:pending_conns].pop
+                upstream_socket = TCPSocket.new("localhost", tunnel[:forwarded_port])
+                tunnel[:conns].push([client_socket, upstream_socket])
+              end
               Thread.pass
             end
           end
         end
-
-        upstream_socket = TCPSocket.new("localhost", tunnel[:forwarded_port])
-        tunnel[:conns].push([client_socket, upstream_socket])
-        printf "/"
-        # puts
-        # puts "New connection to #{tunnel[:host]}:#{tunnel[:remote_port]}#{tunnel[:proxy_jump] ? " (via #{tunnel[:proxy_jump]})":""}"
       end
       tunnel[:conns].each do |conn|
         begin
