@@ -1,5 +1,7 @@
 # You can use this to import tunnels from your ~/.ssh/config file
 import_hosts = ["dev1", "dev2"]
+# or: (this is what happens if this config file can not be found)
+import_all_hosts = true
 
 [[tunnel]]
 local_interface = "localhost" # This tunnel only accepts connections from your own computer

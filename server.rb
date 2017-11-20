@@ -6,29 +6,67 @@ require "net/ssh/proxy/jump"
 require "toml-rb"
 
 config_path = File.exists?("ssh-tunnel-proxy.toml") ? "ssh-tunnel-proxy.toml" : File.expand_path("~/.ssh-tunnel-proxy.toml")
-puts "Loading config from: #{config_path}"
+if File.exists?(config_path)
+  puts "Loading config from: #{config_path}"
+  config = TomlRB.load_file(config_path)
+else
+  puts "Could not find config file #{config_path}. Loading your SSH config."
+  config = {"import_all_hosts" => true}
+end
 
-config = TomlRB.load_file(config_path)
 config["tunnel"] ||= []
+config["import_hosts"] ||= []
 tunnels = config["tunnel"]
 
-if config["import_hosts"]
-  config["import_hosts"].each do |host|
-    host_config = Net::SSH::Config.load("~/.ssh/config", host)
-    forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
-    local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
-    local_interface = nil if local_interface == "*"
-    local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
-    tunnels.push({
-      "local_interface" => local_interface,
-      "local_port" => local_port.to_i,
-      "remote_host" => forward[1][0],
-      "remote_port" => forward[1][1].to_i,
-      "user" => host_config["user"],
-      "host" => host_config["hostname"],
-      "proxy_jump" => host_config["proxyjump"],
-    })
+if config["import_all_hosts"]
+  # This is a bit ugly, not sure I want to keep it
+  # I wish net-ssh would help with this
+  host = nil
+  host_config = {}
+  File.read(File.expand_path("~/.ssh/config")).split("\n").each do |line|
+    next if line =~ /^\s*(?:#.*)?$/
+    key, value = line.strip.split(/\s+/, 2)
+    next if value.nil?
+    key.downcase!
+    if key == "host"
+      if host && host_config["localforward"]
+        forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
+        local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
+        local_interface = nil if local_interface == "*"
+        local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
+        tunnels.push({
+          "local_interface" => local_interface,
+          "local_port" => local_port.to_i,
+          "remote_host" => forward[1][0],
+          "remote_port" => forward[1][1].to_i,
+          "user" => host_config["user"],
+          "host" => host_config["hostname"],
+          "proxy_jump" => host_config["proxyjump"],
+        })
+      end
+      host = value
+      host_config = {}
+    else
+      host_config[key] = value
+    end
   end
+end
+
+config["import_hosts"].each do |host|
+  host_config = Net::SSH::Config.load("~/.ssh/config", host)
+  forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
+  local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
+  local_interface = nil if local_interface == "*"
+  local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
+  tunnels.push({
+    "local_interface" => local_interface,
+    "local_port" => local_port.to_i,
+    "remote_host" => forward[1][0],
+    "remote_port" => forward[1][1].to_i,
+    "user" => host_config["user"],
+    "host" => host_config["hostname"],
+    "proxy_jump" => host_config["proxyjump"],
+  })
 end
 
 trap("INT") do
@@ -51,9 +89,8 @@ tunnels.each do |tunnel|
   tunnel["conns"] = []
   tunnel["pending_conns"] = []
   tunnel["last_activity"] = nil
+  puts "Waiting for connection on #{tunnel["local_interface"]}:#{tunnel["local_port"]} for #{tunnel["remote_host"]}:#{tunnel["remote_port"]} on #{tunnel["host"]} #{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""}"
 end
-
-puts "Started listening on ports: #{tunnels.map { |t| t["local_port"] }}"
 
 loop do
   sockets = tunnels.map { |t| [t["server_socket"], t["conns"]] }.flatten
