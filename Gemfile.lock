@@ -2,12 +2,15 @@ GEM
   remote: https://rubygems.org/
   specs:
     bcrypt_pbkdf (1.0.0)
+    citrus (3.0.2)
     ffi (1.9.18)
     net-ssh (4.2.0)
     rbnacl (4.0.2)
       ffi
     rbnacl-libsodium (1.0.15.1)
       rbnacl (>= 3.0.1)
+    toml-rb (1.1.0)
+      citrus (~> 3.0, > 3.0)
 
 PLATFORMS
   ruby
@@ -17,6 +20,7 @@ DEPENDENCIES
   net-ssh
   rbnacl (>= 3.2.0, < 5.0)
   rbnacl-libsodium
+  toml-rb
 
 BUNDLED WITH
    1.16.0

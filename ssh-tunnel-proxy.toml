@@ -1,0 +1,17 @@
+[[tunnel]]
+local_interface = "localhost" # This tunnel only accepts connections from your own computer
+local_port = 8881
+remote_host = "localhost"
+remote_port = 8880
+user = "my_username"
+host = "dev1.example.com"
+proxy_jump = "my_username@bastion.example.com"
+
+[[tunnel]]
+# Without "local_interface", this tunnel accepts connections on all interfaces
+local_port = 8882
+remote_host = "localhost"
+remote_port = 8880
+user = "my_username"
+host = "dev2.example.com"
+proxy_jump = "my_username@bastion.example.com"
