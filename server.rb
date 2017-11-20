@@ -45,7 +45,6 @@ loop do
         puts "Closing SSH connection to #{tunnel["host"]}:#{tunnel["remote_port"]}#{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""} because of inactivity..."
         tunnel["thread"]["active"] = false
         tunnel["thread"].join
-        tunnel["ssh"] = nil
         tunnel["conns"] = []
         tunnel["pending_conns"] = []
         tunnel["last_activity"] = nil
@@ -69,7 +68,7 @@ loop do
               opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel["proxy_jump"])
             end
             tunnel["ssh"] = Net::SSH.start(tunnel["host"], tunnel["user"], opts)
-            tunnel["forwarded_port"] = tunnel["ssh"].forward.local(0, tunnel["remote_host"], tunnel["remote_port"])
+            tunnel["forwarded_port"] = tunnel["ssh"].forward.local(tunnel["forwarded_port"] || 0, tunnel["remote_host"], tunnel["remote_port"])
             # process SSH communication
             while Thread.current["active"] do
               while !tunnel["pending_conns"].empty?
@@ -80,6 +79,9 @@ loop do
               tunnel["ssh"].process(0.01)
               Thread.pass
             end
+            tunnel["ssh"].forward.cancel_local(tunnel["forwarded_port"])
+            tunnel["ssh"].close
+            tunnel["ssh"] = nil
           end
         end
       end
