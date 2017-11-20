@@ -18,7 +18,7 @@ trap("INT") do
       tunnel["thread"]["active"] = false
       tunnel["thread"].join
     end
-    if tunnel["server_socket"] && !tunnel["server_socket"].closed?
+    if !tunnel["server_socket"].closed?
       tunnel["server_socket"].close
     end
   end
@@ -56,8 +56,16 @@ loop do
     tunnels.each do |tunnel|
       if sock == tunnel["server_socket"]
         printf "/"
-        tunnel["pending_conns"].push(tunnel["server_socket"].accept)
-        if !tunnel["ssh"]
+        if tunnel["ssh"]
+          if tunnel["forwarded_port"]
+            client_socket = tunnel["server_socket"].accept
+            upstream_socket = TCPSocket.new("localhost", tunnel["forwarded_port"])
+            tunnel["conns"].push([client_socket, upstream_socket])
+          else
+            tunnel["pending_conns"].push(tunnel["server_socket"].accept)
+          end
+        else
+          tunnel["pending_conns"].push(tunnel["server_socket"].accept)
           tunnel["ssh"] = true
           puts
           puts "Opening SSH connection to #{tunnel["host"]}:#{tunnel["remote_port"]}#{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""}..."
@@ -69,13 +77,13 @@ loop do
             end
             tunnel["ssh"] = Net::SSH.start(tunnel["host"], tunnel["user"], opts)
             tunnel["forwarded_port"] = tunnel["ssh"].forward.local(tunnel["forwarded_port"] || 0, tunnel["remote_host"], tunnel["remote_port"])
+            while !tunnel["pending_conns"].empty?
+              client_socket = tunnel["pending_conns"].pop
+              upstream_socket = TCPSocket.new("localhost", tunnel["forwarded_port"])
+              tunnel["conns"].push([client_socket, upstream_socket])
+            end
             # process SSH communication
             while Thread.current["active"] do
-              while !tunnel["pending_conns"].empty?
-                client_socket = tunnel["pending_conns"].pop
-                upstream_socket = TCPSocket.new("localhost", tunnel["forwarded_port"])
-                tunnel["conns"].push([client_socket, upstream_socket])
-              end
               tunnel["ssh"].process(0.01)
               Thread.pass
             end
