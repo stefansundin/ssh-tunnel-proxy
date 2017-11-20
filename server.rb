@@ -9,7 +9,27 @@ config_path = File.exists?("ssh-tunnel-proxy.toml") ? "ssh-tunnel-proxy.toml" : 
 puts "Loading config from: #{config_path}"
 
 config = TomlRB.load_file(config_path)
+config["tunnel"] ||= []
 tunnels = config["tunnel"]
+
+if config["import_hosts"]
+  config["import_hosts"].each do |host|
+    host_config = Net::SSH::Config.load("~/.ssh/config", host)
+    forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
+    local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
+    local_interface = nil if local_interface == "*"
+    local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
+    tunnels.push({
+      "local_interface" => local_interface,
+      "local_port" => local_port.to_i,
+      "remote_host" => forward[1][0],
+      "remote_port" => forward[1][1].to_i,
+      "user" => host_config["user"],
+      "host" => host_config["hostname"],
+      "proxy_jump" => host_config["proxyjump"],
+    })
+  end
+end
 
 trap("INT") do
   puts "\nBye!"

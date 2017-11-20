@@ -1,3 +1,6 @@
+# You can use this to import tunnels from your ~/.ssh/config file
+import_hosts = ["dev1", "dev2"]
+
 [[tunnel]]
 local_interface = "localhost" # This tunnel only accepts connections from your own computer
 local_port = 8881
