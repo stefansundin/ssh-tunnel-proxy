@@ -54,6 +54,10 @@ end
 
 config["import_hosts"].each do |host|
   host_config = Net::SSH::Config.load("~/.ssh/config", host)
+  if !host_config["localforward"]
+    puts "Skipping #{host} because of missing LocalForward setting."
+    next
+  end
   forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
   local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
   local_interface = nil if local_interface == "*"
