@@ -17,7 +17,7 @@ PLATFORMS
 
 DEPENDENCIES
   bcrypt_pbkdf
-  net-ssh
+  net-ssh (~> 4.2.0)
   rbnacl (>= 3.2.0, < 5.0)
   rbnacl-libsodium
   toml-rb

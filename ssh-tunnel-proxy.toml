@@ -17,7 +17,6 @@ proxy_jump = "my_username@bastion.example.com"
 local_port = 8882
 remote_host = "localhost"
 remote_port = 8880
-forwarded_port = 8888 # You can specify the port in the middle if you want, otherwise a random port is used
 user = "my_username"
 host = "dev2.example.com"
 proxy_jump = "my_username@bastion.example.com"
