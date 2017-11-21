@@ -24,6 +24,8 @@ module Net; module SSH; module Service
       @local_forwarded_ports[[local_port, bind_address]] = socket
 
       session.listen_to(socket) do |server|
+        Thread.current["conns"] += 1
+
         client = server.accept
         debug { "received connection on #{socket}" }
 
@@ -37,6 +39,12 @@ module Net; module SSH; module Service
           channel.error { "could not establish direct channel: #{description} (#{code})" }
           session.stop_listening_to(channel[:socket])
           channel[:socket].close
+          Thread.current["conns"] -= 1
+        end
+
+        channel.on_close do |ch|
+          Thread.current["conns"] -= 1
+          Thread.current["last_activity"] = Time.now
         end
       end
 
@@ -138,6 +146,14 @@ loop do
   sockets = tunnels.select { |t| !t["ssh"] }.map { |t| t["server_socket"] }
   result = IO.select(sockets, nil, nil, 1)
   if result == nil
+    a_while_ago = Time.now - 5*60
+    tunnels.each do |tunnel|
+      if tunnel["ssh"] && tunnel["thread"]["conns"] == 0 && tunnel["thread"]["last_activity"] < a_while_ago
+        puts "Closing SSH connection to #{tunnel["host"]}:#{tunnel["remote_port"]}#{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""} because of inactivity..."
+        tunnel["thread"]["active"] = false
+        tunnel["thread"].join
+      end
+    end
     next
   end
   result[0].each do |sock|
@@ -147,6 +163,8 @@ loop do
         puts "Opening SSH connection to #{tunnel["host"]}:#{tunnel["remote_port"]}#{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""}..."
         tunnel["thread"] = Thread.new do
           Thread.current["active"] = true
+          Thread.current["conns"] = 0
+          Thread.current["last_activity"] = Time.now
           opts = {}
           if tunnel["proxy_jump"]
             opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel["proxy_jump"])
