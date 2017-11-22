@@ -5,6 +5,8 @@ require "net/ssh"
 require "net/ssh/proxy/jump"
 require "toml-rb"
 
+Thread.abort_on_exception = true
+
 # Monkeypatch a new method into net-ssh that receives a socket
 module Net; module SSH; module Service
   class Forward
@@ -24,9 +26,8 @@ module Net; module SSH; module Service
       @local_forwarded_ports[[local_port, bind_address]] = socket
 
       session.listen_to(socket) do |server|
-        Thread.current["conns"] += 1
-
         client = server.accept
+        Thread.current["conns"].push(client)
         debug { "received connection on #{socket}" }
 
         channel = session.open_channel("direct-tcpip", :string, remote_host, :long, remote_port, :string, bind_address, local_port_type, local_port) do |achannel|
@@ -39,11 +40,11 @@ module Net; module SSH; module Service
           channel.error { "could not establish direct channel: #{description} (#{code})" }
           session.stop_listening_to(channel[:socket])
           channel[:socket].close
-          Thread.current["conns"] -= 1
+          Thread.current["conns"].delete(channel[:socket])
         end
 
         channel.on_close do |ch|
-          Thread.current["conns"] -= 1
+          Thread.current["conns"].delete(channel[:socket])
           Thread.current["last_activity"] = Time.now
         end
       end
@@ -139,16 +140,16 @@ end
 tunnels.each do |tunnel|
   tunnel["server_socket"] = TCPServer.new(tunnel["local_interface"], tunnel["local_port"])
   tunnel["server_socket"].listen(128)
-  puts "Waiting for connection on #{tunnel["local_interface"]}:#{tunnel["local_port"]} for #{tunnel["remote_host"]}:#{tunnel["remote_port"]} on #{tunnel["host"]} #{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""}"
+  puts "Waiting for connection on #{tunnel["local_interface"]}:#{tunnel["local_port"]} for #{tunnel["remote_host"]}:#{tunnel["remote_port"]} on #{tunnel["host"]}#{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""}"
 end
 
 loop do
-  sockets = tunnels.select { |t| !t["ssh"] }.map { |t| t["server_socket"] }
+  sockets = tunnels.select { |t| !t["thread"] }.map { |t| t["server_socket"] }
   result = IO.select(sockets, nil, nil, 1)
   if result == nil
     a_while_ago = Time.now - 5*60
     tunnels.each do |tunnel|
-      if tunnel["ssh"] && tunnel["thread"]["conns"] == 0 && tunnel["thread"]["last_activity"] < a_while_ago
+      if tunnel["thread"] && tunnel["thread"]["conns"].empty? && tunnel["thread"]["last_activity"] < a_while_ago
         puts "Closing SSH connection to #{tunnel["host"]}:#{tunnel["remote_port"]}#{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""} because of inactivity..."
         tunnel["thread"]["active"] = false
         tunnel["thread"].join
@@ -159,25 +160,38 @@ loop do
   result[0].each do |sock|
     tunnels.each do |tunnel|
       if sock == tunnel["server_socket"]
-        tunnel["ssh"] = true
         puts "Opening SSH connection to #{tunnel["host"]}:#{tunnel["remote_port"]}#{tunnel["proxy_jump"] ? " (via #{tunnel["proxy_jump"]})":""}..."
         tunnel["thread"] = Thread.new do
-          Thread.current["active"] = true
-          Thread.current["conns"] = 0
-          Thread.current["last_activity"] = Time.now
-          opts = {}
-          if tunnel["proxy_jump"]
-            opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel["proxy_jump"])
+          begin
+            Thread.current["active"] = false
+            Thread.current["conns"] = []
+            Thread.current["last_activity"] = Time.now
+            opts = {}
+            if tunnel["proxy_jump"]
+              opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel["proxy_jump"])
+            end
+            ssh = Net::SSH.start(tunnel["host"], tunnel["user"], opts)
+            ssh.forward.local2(tunnel["server_socket"], tunnel["remote_host"], tunnel["remote_port"])
+            # process SSH communication
+            Thread.current["active"] = true
+            while Thread.current["active"] do
+              ssh.process(0.01)
+              Thread.pass
+            end
+            ssh.close
+          rescue => e
+            puts "Exception in SSH thread: #{e}"
+            if !Thread.current["active"]
+              # The SSH tunnel failed to open, pick up the connection and close it
+              tunnel["server_socket"].accept.close
+            end
+            while !Thread.current["conns"].empty?
+              # Close any connections that are in flight
+              Thread.current["conns"].pop.close
+            end
+          ensure
+            tunnel["thread"] = nil
           end
-          tunnel["ssh"] = Net::SSH.start(tunnel["host"], tunnel["user"], opts)
-          tunnel["ssh"].forward.local2(tunnel["server_socket"], tunnel["remote_host"], tunnel["remote_port"])
-          # process SSH communication
-          while Thread.current["active"] do
-            tunnel["ssh"].process(0.01)
-            Thread.pass
-          end
-          tunnel["ssh"].close
-          tunnel["ssh"] = nil
         end
       end
     end
