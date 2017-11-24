@@ -1,0 +1,3 @@
+[submodule "ssh-tunnel-proxy"]
+	path = ssh-tunnel-proxy
+	url = https://github.com/stefansundin/ssh-tunnel-proxy.git
