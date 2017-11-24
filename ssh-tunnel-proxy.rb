@@ -137,6 +137,11 @@ trap("INT") do
   exit
 end
 
+if tunnels.empty?
+  puts "There are no tunnels defined. Exiting."
+  exit(1)
+end
+
 tunnels.each do |tunnel|
   tunnel[:server_socket] = TCPServer.new(tunnel[:local_interface], tunnel[:local_port])
   tunnel[:server_socket].listen(128)
