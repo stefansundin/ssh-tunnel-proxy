@@ -20,3 +20,6 @@ remote_port = 8880
 user = "my_username"
 host = "dev2.example.com"
 proxy_jump = "my_username@bastion.example.com"
+[tunnel.opts] # Additional options to net-ssh
+port = 2222
+keys = ["~/.ssh/my_key"]
