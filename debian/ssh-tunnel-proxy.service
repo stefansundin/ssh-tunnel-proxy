@@ -1,0 +1,14 @@
+# The service will look for the config file at /etc/ssh-tunnel-proxy.toml
+
+[Unit]
+Description=SSH Tunnel Proxy
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/etc
+ExecStart=/usr/bin/ssh-tunnel-proxy
+TimeoutSec=300
+
+[Install]
+WantedBy=multi-user.target

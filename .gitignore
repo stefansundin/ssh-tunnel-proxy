@@ -2,5 +2,6 @@
 debian/*.debhelper.log
 debian/*.substvars
 debian/.debhelper
+debian/ssh-tunnel-proxy.*.debhelper
 debian/files
 debian/ssh-tunnel-proxy
