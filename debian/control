@@ -1,0 +1,12 @@
+Source: ssh-tunnel-proxy
+Section: net
+Priority: optional
+Maintainer: Stefan Sundin <stefan@stefansundin.com>
+Build-Depends: debhelper (>= 9)
+Standards-Version: 3.9.8
+Homepage: https://github.com/stefansundin/ssh-tunnel-proxy
+
+Package: ssh-tunnel-proxy
+Architecture: all
+Depends: ruby, ruby-net-ssh, ruby-toml-rb
+Description: Ruby proxy that automatically open SSH tunnels when connections are received.
