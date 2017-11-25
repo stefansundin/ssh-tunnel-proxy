@@ -51,6 +51,51 @@ module Net; module SSH; module Service
 
       local_port
     end
+
+    def dynamic2(socket)
+      local_port_type = :long
+      local_port = socket.addr[1]
+      bind_address = socket.addr[2]
+      @local_forwarded_ports[[local_port, bind_address]] = socket
+
+      session.listen_to(socket) do |server|
+        client = server.accept
+        Thread.current[:conns].push(client)
+        debug { "received connection on #{socket}" }
+
+        version, = client.recv(1).unpack("C")
+        if version == 4
+          command, port, ip1, ip2, ip3, ip4, user = client.recv(32).unpack("CnC4Z*")
+          raise "Unsupported SOCKS command: #{command}" if command != 1
+          ip = "#{ip1}.#{ip2}.#{ip3}.#{ip4}"
+          client.send([0, 0x5A, 0, 0, 0, 0, 0, 0].pack("CCnN"), 0)
+        elsif version == 5
+          raise "SOCKS5 not supported yet"
+        else
+          raise "Unsupported SOCKS version: #{version}"
+        end
+
+        channel = session.open_channel("direct-tcpip", :string, ip, :long, port, :string, bind_address, local_port_type, local_port) do |achannel|
+          achannel.info { "direct channel established" }
+        end
+
+        prepare_client(client, channel, :local)
+
+        channel.on_open_failed do |ch, code, description|
+          channel.error { "could not establish direct channel: #{description} (#{code})" }
+          session.stop_listening_to(channel[:socket])
+          channel[:socket].close
+          Thread.current[:conns].delete(channel[:socket])
+        end
+
+        channel.on_close do |ch|
+          Thread.current[:conns].delete(channel[:socket])
+          Thread.current[:last_activity] = Time.now
+        end
+      end
+
+      local_port
+    end
   end
 end; end; end
 
@@ -146,7 +191,11 @@ tunnels.each do |tunnel|
   tunnel[:forward].each do |forward|
     forward[:server] = TCPServer.new(forward[:local_interface], forward[:local_port])
     forward[:server].listen(128)
-    puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} to #{forward[:remote_host]}:#{forward[:remote_port]} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+    if forward[:type] == "dynamic"
+      puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} (dynamic) via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+    else
+      puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} to #{forward[:remote_host]}:#{forward[:remote_port]} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+    end
   end
 end
 
@@ -182,7 +231,11 @@ loop do
             end
             ssh = Net::SSH.start(tunnel[:host], tunnel[:user], opts)
             tunnel[:forward].each do |forward|
-              ssh.forward.local2(forward[:server], forward[:remote_host], forward[:remote_port])
+              if forward[:type] == "dynamic"
+                ssh.forward.dynamic2(forward[:server])
+              else
+                ssh.forward.local2(forward[:server], forward[:remote_host], forward[:remote_port])
+              end
             end
             # process SSH communication
             Thread.current[:active] = true

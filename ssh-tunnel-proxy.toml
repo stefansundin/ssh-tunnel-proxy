@@ -9,11 +9,15 @@ host = "dev1.example.com"
 proxy_jump = "my_username@bastion.example.com"
 # Repeat the following section to forward multiple ports
 [[tunnel.forward]]
+# This is equivalent to -L localhost:8881:localhost:8880
+type = "local"
 local_interface = "localhost" # This tunnel only accepts connections from your own computer
 local_port = 8881
 remote_host = "localhost"
 remote_port = 8880
 [[tunnel.forward]]
+# This is equivalent to -L localhost:8501:consul.service.consul:8500
+type = "local"
 local_interface = "localhost"
 local_port = 8501
 remote_host = "consul.service.consul"
@@ -27,7 +31,14 @@ proxy_jump = "my_username@bastion.example.com"
 port = 2222
 keys = ["~/.ssh/my_key"]
 [[tunnel.forward]]
+# This is equivalent to -L localhost:8882:localhost:8880
+type = "local"
 # Without "local_interface", this tunnel accepts connections on all interfaces
 local_port = 8882
 remote_host = "localhost"
 remote_port = 8880
+[[tunnel.forward]]
+# This is equivalent to -D localhost:8888
+type = "dynamic"
+local_interface = "localhost"
+local_port = 8888
