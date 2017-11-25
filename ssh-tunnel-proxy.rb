@@ -135,56 +135,106 @@ tunnels = config[:tunnel]
 if config[:import_all_hosts]
   # This is a bit ugly, not sure I want to keep it
   # I wish net-ssh would help with this
+  array_keys = %w[localforward dynamicforward identityfile]
   host = nil
   host_config = {}
-  File.read(File.expand_path("~/.ssh/config")).split("\n").each do |line|
-    next if line =~ /^\s*(?:#.*)?$/
-    key, value = line.strip.split(/\s+/, 2)
-    next if value.nil?
-    key.downcase!
-    if key == "host"
-      if host && host_config["localforward"]
-        forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
-        local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
-        local_interface = nil if local_interface == "*"
-        local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
-        tunnels.push({
-          local_interface: local_interface,
-          local_port: local_port.to_i,
-          remote_host: forward[1][0],
-          remote_port: forward[1][1].to_i,
+  File.read(File.expand_path("~/.ssh/config")).split("\n").push(nil).each do |line|
+    if line != nil
+      next if line =~ /^\s*(?:#.*)?$/
+      key, value = line.strip.split(/\s+/, 2)
+      next if value.nil?
+      key.downcase!
+    end
+    if key == "host" || line == nil
+      if host && (host_config["localforward"] || host_config["dynamicforward"])
+        tunnel = {
           user: host_config["user"],
           host: host_config["hostname"],
           proxy_jump: host_config["proxyjump"],
-        })
+          opts: {},
+          forward: [],
+        }
+        tunnel[:opts][:port] = host_config["port"] if host_config["port"]
+        tunnel[:opts][:keys] = host_config["identityfile"] if host_config["identityfile"]
+        host_config["localforward"].each do |forward|
+          forward = forward.split(" ").map { |s| s.split(":") }
+          local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
+          local_interface = nil if local_interface == "*"
+          local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
+          tunnel[:forward].push({
+            type: "local",
+            local_interface: local_interface,
+            local_port: local_port.to_i,
+            remote_host: forward[1][0],
+            remote_port: forward[1][1].to_i,
+          })
+        end if host_config["localforward"]
+        host_config["dynamicforward"].each do |forward|
+          forward = forward.split(" ").map { |s| s.split(":") }
+          local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
+          local_interface = nil if local_interface == "*"
+          local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
+          tunnel[:forward].push({
+            type: "dynamic",
+            local_interface: local_interface,
+            local_port: local_port.to_i,
+          })
+        end if host_config["dynamicforward"]
+        tunnels.push(tunnel)
       end
       host = value
       host_config = {}
     else
-      host_config[key] = value
+      if array_keys.include?(key)
+        host_config[key] ||= []
+        host_config[key].push(value)
+      else
+        host_config[key] = value
+      end
     end
   end
 end
 
 config[:import_hosts].each do |host|
   host_config = Net::SSH::Config.load("~/.ssh/config", host)
-  if !host_config["localforward"]
-    puts "Skipping #{host} because of missing LocalForward setting."
+  if !host_config["localforward"] && !host_config["dynamicforward"]
+    puts "Skipping #{host} because of missing LocalForward and DynamicForward setting."
     next
   end
-  forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
-  local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
-  local_interface = nil if local_interface == "*"
-  local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
-  tunnels.push({
-    local_interface: local_interface,
-    local_port: local_port.to_i,
-    remote_host: forward[1][0],
-    remote_port: forward[1][1].to_i,
+  tunnel = {
     user: host_config["user"],
     host: host_config["hostname"],
     proxy_jump: host_config["proxyjump"],
-  })
+    opts: {},
+    forward: [],
+  }
+  tunnel[:opts][:port] = host_config["port"] if host_config["port"]
+  tunnel[:opts][:keys] = host_config["identityfile"] if host_config["identityfile"]
+  if host_config["localforward"]
+    forward = host_config["localforward"].split(" ").map { |s| s.split(":") }
+    local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
+    local_interface = nil if local_interface == "*"
+    local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
+    tunnel[:forward].push({
+      type: "local",
+      local_interface: local_interface,
+      local_port: local_port.to_i,
+      remote_host: forward[1][0],
+      remote_port: forward[1][1].to_i,
+    })
+  end
+  if host_config["dynamicforward"]
+    forward = host_config["dynamicforward"].to_s.split(" ").map { |s| s.split(":") }
+    local_interface = forward[0].length == 2 ? forward[0][0] : "localhost"
+    local_interface = nil if local_interface == "*"
+    local_port = forward[0].length == 1 ? forward[0][0] : forward[0][1]
+    tunnel[:forward].push({
+      type: "dynamic",
+      local_interface: local_interface,
+      local_port: local_port.to_i,
+    })
+  end
+  tunnels.push(tunnel)
 end
 
 trap("INT") do
