@@ -130,8 +130,8 @@ trap("INT") do
       tunnel[:thread][:active] = false
       tunnel[:thread].join
     end
-    if !tunnel[:server_socket].closed?
-      tunnel[:server_socket].close
+    while !tunnel[:forward].empty?
+      tunnel[:forward].pop[:server].close
     end
   end
   exit
@@ -143,19 +143,21 @@ if tunnels.empty?
 end
 
 tunnels.each do |tunnel|
-  tunnel[:server_socket] = TCPServer.new(tunnel[:local_interface], tunnel[:local_port])
-  tunnel[:server_socket].listen(128)
-  puts "Waiting for connection on #{tunnel[:local_interface]}:#{tunnel[:local_port]} for #{tunnel[:remote_host]}:#{tunnel[:remote_port]} on #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via #{tunnel[:proxy_jump]})":""}"
+  tunnel[:forward].each do |forward|
+    forward[:server] = TCPServer.new(forward[:local_interface], forward[:local_port])
+    forward[:server].listen(128)
+    puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} to #{forward[:remote_host]}:#{forward[:remote_port]} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+  end
 end
 
 loop do
-  sockets = tunnels.select { |t| !t[:thread] }.map { |t| t[:server_socket] }
+  sockets = tunnels.select { |t| !t[:thread] }.map { |t| t[:forward].map { |f| f[:server] } }.flatten
   result = IO.select(sockets, nil, nil, 1)
   if result == nil
     a_while_ago = Time.now - 5*60
     tunnels.each do |tunnel|
-      if tunnel[:thread] && tunnel[:thread]["conns"].empty? && tunnel[:thread]["last_activity"] < a_while_ago
-        puts "Closing SSH connection to #{tunnel[:host]}:#{tunnel[:remote_port]}#{tunnel[:proxy_jump] ? " (via #{tunnel[:proxy_jump]})":""} because of inactivity..."
+      if tunnel[:thread] && tunnel[:thread][:conns].empty? && tunnel[:thread][:last_activity] < a_while_ago
+        puts "Closing SSH connection to #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""} because of inactivity..."
         tunnel[:thread][:active] = false
         tunnel[:thread].join
       end
@@ -164,8 +166,8 @@ loop do
   end
   result[0].each do |sock|
     tunnels.each do |tunnel|
-      if sock == tunnel[:server_socket]
-        puts "Opening SSH connection to #{tunnel[:host]}:#{tunnel[:remote_port]}#{tunnel[:proxy_jump] ? " (via #{tunnel[:proxy_jump]})":""}..."
+      if tunnel[:forward].map { |f| f[:server] }.include?(sock)
+        puts "Opening SSH connection to #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}..."
         tunnel[:thread] = Thread.new do
           begin
             Thread.current[:active] = false
@@ -179,7 +181,9 @@ loop do
               opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel[:proxy_jump])
             end
             ssh = Net::SSH.start(tunnel[:host], tunnel[:user], opts)
-            ssh.forward.local2(tunnel[:server_socket], tunnel[:remote_host], tunnel[:remote_port])
+            tunnel[:forward].each do |forward|
+              ssh.forward.local2(forward[:server], forward[:remote_host], forward[:remote_port])
+            end
             # process SSH communication
             Thread.current[:active] = true
             while Thread.current[:active] do
@@ -191,7 +195,7 @@ loop do
             puts "Exception in SSH thread: #{e}"
             if !Thread.current[:active]
               # The SSH tunnel failed to open, pick up the connection and close it
-              tunnel[:server_socket].accept.close
+              sock.accept.close
             end
             while !Thread.current[:conns].empty?
               # Close any connections that are in flight
