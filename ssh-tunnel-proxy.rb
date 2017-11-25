@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 require "socket"
+require "ipaddr"
 require "net/ssh"
 require "net/ssh/proxy/jump"
 require "toml-rb"
@@ -64,18 +65,36 @@ module Net; module SSH; module Service
         debug { "received connection on #{socket}" }
 
         version, = client.recv(1).unpack("C")
-        if version == 4
-          command, port, ip1, ip2, ip3, ip4, user = client.recv(32).unpack("CnC4Z*")
+        if version == 4 # SOCKS4
+          command, port = client.recv(4).unpack("Cn")
           raise "Unsupported SOCKS command: #{command}" if command != 1
-          ip = "#{ip1}.#{ip2}.#{ip3}.#{ip4}"
+          remote_host = IPAddr.ntop(client.recv(4))
+          client.recv(16) # ignore user field
           client.send([0, 0x5A, 0, 0, 0, 0, 0, 0].pack("CCnN"), 0)
-        elsif version == 5
-          raise "SOCKS5 not supported yet"
+        elsif version == 5 # SOCKS5
+          # https://tools.ietf.org/html/rfc1928
+          auth_methods = client.recv(2).unpack("C2")
+          raise "Unsupported auth method" if auth_methods != [1,0]
+          client.send([5, 0].pack("C2"), 0)
+          version, command, _, type = client.recv(4).unpack("C4")
+          raise "Unsupported version or command: #{version} #{command}" if version != 5 || command != 1
+          if type == 1 # IPv4
+            remote_host = IPAddr.ntop(client.recv(4))
+          elsif type == 3 # Domain name
+            len, = client.recv(1).unpack("C")
+            remote_host, = client.recv(len).unpack("a*")
+          elsif type == 4 # IPv6
+            remote_host = IPAddr.ntop(client.recv(16))
+          else
+            raise "Unsupported address type: #{type}"
+          end
+          port, = client.recv(2).unpack("n")
+          client.send([5, 0, 0, 1, 0, 0, 0, 0, 0].pack("C4C4n"), 0) # Doesn't seem like you have to send back the same data, this is also how openssh does it
         else
           raise "Unsupported SOCKS version: #{version}"
         end
 
-        channel = session.open_channel("direct-tcpip", :string, ip, :long, port, :string, bind_address, local_port_type, local_port) do |achannel|
+        channel = session.open_channel("direct-tcpip", :string, remote_host, :long, port, :string, bind_address, local_port_type, local_port) do |achannel|
           achannel.info { "direct channel established" }
         end
 
