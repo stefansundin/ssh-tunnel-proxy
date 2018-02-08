@@ -130,6 +130,7 @@ end
 
 config[:tunnel] ||= []
 config[:import_hosts] ||= []
+config[:timeout] ||= nil
 tunnels = config[:tunnel]
 
 if config[:import_all_hosts]
@@ -271,8 +272,8 @@ end
 loop do
   sockets = tunnels.select { |t| !t[:thread] }.map { |t| t[:forward].map { |f| f[:server] } }.flatten
   result = IO.select(sockets, nil, nil, 1)
-  if result == nil
-    a_while_ago = Time.now - 5*60
+  if result == nil && config[:timeout]
+    a_while_ago = Time.now - config[:timeout]
     tunnels.each do |tunnel|
       if tunnel[:thread] && tunnel[:thread][:conns].empty? && tunnel[:thread][:last_activity] < a_while_ago
         puts "Closing SSH connection to #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""} because of inactivity..."
@@ -280,8 +281,8 @@ loop do
         tunnel[:thread].join
       end
     end
-    next
   end
+  next if result == nil
   result[0].each do |sock|
     tunnels.each do |tunnel|
       if tunnel[:forward].map { |f| f[:server] }.include?(sock)

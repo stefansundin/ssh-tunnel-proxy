@@ -2,6 +2,8 @@
 import_hosts = ["dev1", "dev2"]
 # or: (this is what happens if this config file can not be found)
 import_all_hosts = true
+# Time (in seconds) to keep a tunnel with no connections open before closing it:
+timeout = 300
 
 [[tunnel]]
 user = "my_username"
