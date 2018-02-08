@@ -238,6 +238,10 @@ config[:import_hosts].each do |host|
   tunnels.push(tunnel)
 end
 
+tunnels.each do |tunnel|
+  tunnel[:opts][:verbose] = tunnel[:opts][:verbose].to_sym if tunnel[:opts] && tunnel[:opts][:verbose]
+end
+
 trap("INT") do
   puts "\nBye!"
   tunnels.each do |tunnel|

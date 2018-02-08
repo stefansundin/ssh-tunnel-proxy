@@ -29,9 +29,10 @@ remote_port = 8500
 user = "my_username"
 host = "dev2.example.com"
 proxy_jump = "my_username@bastion.example.com"
-[tunnel.opts] # Additional options to net-ssh
+[tunnel.opts] # Additional options to net-ssh, see: https://net-ssh.github.io/ssh/v2/api/classes/Net/SSH.html#M000002
 port = 2222
 keys = ["~/.ssh/my_key"]
+verbose = "info"
 [[tunnel.forward]]
 # This is equivalent to -L localhost:8882:localhost:8880
 type = "local"
