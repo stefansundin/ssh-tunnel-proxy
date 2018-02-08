@@ -16,15 +16,34 @@ module Net; module SSH; module Service
         raise ArgumentError, "expected 3 or 4 parameters, got #{args.length}"
       end
 
-      local_port_type = :long
+      if defined?(UNIXServer) and args.first.class == UNIXServer
+        socket = args.shift
+        bind_address = nil
+        local_port_type = :string
+        local_port = nil
 
-      socket = args.shift
-      local_port = socket.addr[1]
-      bind_address = socket.addr[2]
+        local_socket_path = socket.addr[1]
+        @local_forwarded_sockets[local_socket_path] = socket
+      elsif args.first.class == TCPServer
+        socket = args.shift
+        bind_address = socket.addr[2]
+        local_port_type = :long
+        local_port = socket.addr[1]
+
+        @local_forwarded_ports[[local_port, bind_address]] = socket
+      else
+        bind_address = "127.0.0.1"
+        bind_address = args.shift if args.first.is_a?(String) && args.first =~ /\D/
+        local_port_type = :long
+        local_port = args.shift.to_i
+        socket = TCPServer.new(bind_address, local_port)
+
+        local_port = socket.addr[1] if local_port == 0 # ephemeral port was requested
+        @local_forwarded_ports[[local_port, bind_address]] = socket
+      end
+
       remote_host = args.shift
       remote_port = args.shift.to_i
-
-      @local_forwarded_ports[[local_port, bind_address]] = socket
 
       session.listen_to(socket) do |server|
         client = server.accept
@@ -263,10 +282,18 @@ end
 
 tunnels.each do |tunnel|
   tunnel[:forward].each do |forward|
-    forward[:server] = TCPServer.new(forward[:local_interface], forward[:local_port])
+    if forward[:local_socket]
+      fn = File.expand_path(forward[:local_socket])
+      File.delete(fn) if File.exist?(fn)
+      forward[:server] = UNIXServer.new(fn)
+    else
+      forward[:server] = TCPServer.new(forward[:local_interface], forward[:local_port])
+    end
     forward[:server].listen(128)
     if forward[:type] == "dynamic"
       puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} (dynamic) via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+    elsif forward[:local_socket]
+      puts "Forwarding #{forward[:local_socket]} to #{forward[:remote_host]}:#{forward[:remote_port]} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
     else
       puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} to #{forward[:remote_host]}:#{forward[:remote_port]} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
     end

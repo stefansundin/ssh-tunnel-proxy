@@ -24,6 +24,12 @@ local_interface = "localhost"
 local_port = 8501
 remote_host = "consul.service.consul"
 remote_port = 8500
+[[tunnel.forward]]
+# This is equivalent to -L ~/mysql.socket:mysql.service.consul:3306
+type = "local"
+local_socket = "~/mysql.socket"
+remote_host = "mysql.service.consul"
+remote_port = 3306
 
 [[tunnel]]
 user = "my_username"
