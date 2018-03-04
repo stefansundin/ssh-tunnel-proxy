@@ -284,7 +284,10 @@ tunnels.each do |tunnel|
   tunnel[:forward].each do |forward|
     if forward[:local_socket]
       fn = File.expand_path(forward[:local_socket])
-      File.delete(fn) if File.exist?(fn)
+      if File.exist?(fn)
+        abort "Error: Refusing to clean up existing file #{fn} since it is not a socket file. Please move or delete it manually." if !File.socket?(fn)
+        File.delete(fn)
+      end
       forward[:server] = UNIXServer.new(fn)
     else
       forward[:server] = TCPServer.new(forward[:local_interface], forward[:local_port])
