@@ -12,8 +12,8 @@ Thread.abort_on_exception = true
 module Net; module SSH; module Service
   class Forward
     def local2(*args)
-      if args.length < 3 || args.length > 4
-        raise ArgumentError, "expected 3 or 4 parameters, got #{args.length}"
+      if args.length < 2 || args.length > 4
+        raise ArgumentError, "expected 2 to 4 parameters, got #{args.length}"
       end
 
       if defined?(UNIXServer) and args.first.class == UNIXServer
@@ -42,15 +42,21 @@ module Net; module SSH; module Service
         @local_forwarded_ports[[local_port, bind_address]] = socket
       end
 
-      remote_host = args.shift
-      remote_port = args.shift.to_i
+      if args.length == 2
+        remote_host = args.shift
+        remote_port = args.shift.to_i
+        channel_args = ["direct-tcpip", :string, remote_host, :long, remote_port, :string, bind_address, local_port_type, local_port]
+      else
+        remote_socket_path = args.shift
+        channel_args = ["direct-streamlocal@openssh.com", :string, remote_socket_path, :string, nil, :long, 0]
+      end
 
       session.listen_to(socket) do |server|
         client = server.accept
         Thread.current[:conns].push(client)
         debug { "received connection on #{socket}" }
 
-        channel = session.open_channel("direct-tcpip", :string, remote_host, :long, remote_port, :string, bind_address, local_port_type, local_port) do |achannel|
+        channel = session.open_channel(*channel_args) do |achannel|
           achannel.info { "direct channel established" }
         end
 
@@ -295,10 +301,8 @@ tunnels.each do |tunnel|
     forward[:server].listen(128)
     if forward[:type] == "dynamic"
       puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} (dynamic) via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
-    elsif forward[:local_socket]
-      puts "Forwarding #{forward[:local_socket]} to #{forward[:remote_host]}:#{forward[:remote_port]} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
     else
-      puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} to #{forward[:remote_host]}:#{forward[:remote_port]} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+      puts "Forwarding #{forward[:local_socket] || "#{forward[:local_interface]}:#{forward[:local_port]}"} to #{forward[:remote_socket] || "#{forward[:remote_interface]}:#{forward[:remote_port]}"} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
     end
   end
 end
@@ -337,6 +341,8 @@ loop do
             tunnel[:forward].each do |forward|
               if forward[:type] == "dynamic"
                 ssh.forward.dynamic2(forward[:server])
+              elsif forward[:remote_socket]
+                ssh.forward.local2(forward[:server], forward[:remote_socket])
               else
                 ssh.forward.local2(forward[:server], forward[:remote_host], forward[:remote_port])
               end

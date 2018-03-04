@@ -12,7 +12,7 @@ proxy_jump = "my_username@bastion.example.com"
 # Repeat the following section to forward multiple ports
 [[tunnel.forward]]
 # This is equivalent to -L localhost:8881:localhost:8880
-type = "local"
+type = "local" # type="local" is the default, and can be omitted
 local_interface = "localhost" # This tunnel only accepts connections from your own computer
 local_port = 8881
 remote_host = "localhost"
@@ -25,11 +25,20 @@ local_port = 8501
 remote_host = "consul.service.consul"
 remote_port = 8500
 [[tunnel.forward]]
-# This is equivalent to -L ~/mysql.socket:mysql.service.consul:3306
+# This is equivalent to -L ~/mysql.sock:mysql.service.consul:3306
 type = "local"
-local_socket = "~/mysql.socket"
+local_socket = "~/mysql.sock"
 remote_host = "mysql.service.consul"
 remote_port = 3306
+[[tunnel.forward]]
+# This is equivalent to -L localhost:8883:/var/run/nginx.sock
+local_interface = "localhost"
+local_port = 8883
+remote_socket = "/var/run/nginx.sock"
+[[tunnel.forward]]
+# This is equivalent to -L ~/nginx.sock:/var/run/nginx.sock
+local_socket = "~/nginx.sock"
+remote_socket = "/var/run/nginx.sock"
 
 [[tunnel]]
 user = "my_username"
@@ -40,7 +49,7 @@ port = 2222
 keys = ["~/.ssh/my_key"]
 verbose = "info"
 [[tunnel.forward]]
-# This is equivalent to -L localhost:8882:localhost:8880
+# This is equivalent to -L *:8882:localhost:8880
 type = "local"
 # Without "local_interface", this tunnel accepts connections on all interfaces
 local_port = 8882
