@@ -145,12 +145,14 @@ end; end; end
 
 
 config_path = File.exists?("ssh-tunnel-proxy.toml") ? "ssh-tunnel-proxy.toml" : File.expand_path("~/.ssh-tunnel-proxy.toml")
+ssh_config_path = File.expand_path("~/.ssh/config")
+
 if File.exists?(config_path)
   puts "Loading config from: #{config_path}"
   config = TomlRB.load_file(config_path, symbolize_keys: true)
 else
   puts "Could not find config file #{config_path}. Loading your SSH config."
-  config = {import_all_hosts: true}
+  config = { import_all_hosts: File.exists?(ssh_config_path) }
 end
 
 config[:tunnel] ||= []
@@ -164,7 +166,7 @@ if config[:import_all_hosts]
   array_keys = %w[localforward dynamicforward identityfile]
   host = nil
   host_config = {}
-  File.read(File.expand_path("~/.ssh/config")).split("\n").push(nil).each do |line|
+  File.read(ssh_config_path).split("\n").push(nil).each do |line|
     if line != nil
       next if line =~ /^\s*(?:#.*)?$/
       key, value = line.strip.split(/\s+/, 2)
