@@ -1,4 +1,10 @@
-ssh-tunnel-proxy (0.0.1) unstable; urgency=medium
+ssh-tunnel-proxy (0.0.5) xenial; urgency=medium
+
+  * Update to v0.0.5.
+
+ -- Stefan Sundin <stefan@stefansundin.com>  Sun, 04 Mar 2018 19:21:36 -0800
+
+ssh-tunnel-proxy (0.0.1) xenial; urgency=medium
 
   * Initial Release.
 
