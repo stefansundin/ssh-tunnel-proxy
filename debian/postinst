@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+gem install toml-rb
+exit 0

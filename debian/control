@@ -8,5 +8,5 @@ Homepage: https://github.com/stefansundin/ssh-tunnel-proxy
 
 Package: ssh-tunnel-proxy
 Architecture: all
-Depends: ruby, ruby-net-ssh, ruby-toml-rb
-Description: Ruby proxy that automatically open SSH tunnels when connections are received.
+Depends: ruby, ruby-net-ssh
+Description: Proxy that automatically opens SSH tunnels when connections are received.
