@@ -3,6 +3,9 @@
 %:
 	dh $@
 
+override_dh_installinit:
+	dh_installinit --no-scripts
+
 build:
 	mkdir -p debian/ssh-tunnel-proxy/usr/bin/
 	install -m 755 ssh-tunnel-proxy/ssh-tunnel-proxy.rb debian/ssh-tunnel-proxy/usr/bin/ssh-tunnel-proxy
