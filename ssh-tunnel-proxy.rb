@@ -307,7 +307,7 @@ tunnels.each do |tunnel|
     if forward[:type] == "dynamic"
       puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} (dynamic) via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
     else
-      puts "Forwarding #{forward[:local_socket] || "#{forward[:local_interface]}:#{forward[:local_port]}"} to #{forward[:remote_socket] || "#{forward[:remote_interface]}:#{forward[:remote_port]}"} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+      puts "Forwarding #{forward[:local_socket] || "#{forward[:local_interface]}:#{forward[:local_port]}"} to #{forward[:remote_socket] || "#{forward[:remote_host]}:#{forward[:remote_port]}"} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
     end
   end
 end
