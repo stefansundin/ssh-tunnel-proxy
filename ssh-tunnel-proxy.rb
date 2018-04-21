@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 require "socket"
 require "ipaddr"
+require "fileutils"
 require "net/ssh"
 require "net/ssh/proxy/jump"
 require "toml-rb"
@@ -298,6 +299,10 @@ tunnels.each do |tunnel|
       if File.exist?(fn)
         abort "Error: Refusing to clean up existing file #{fn} since it is not a socket file. Please move or delete it manually." if !File.socket?(fn)
         File.delete(fn)
+      end
+      dir = File.dirname(File.expand_path(fn))
+      if !File.directory?(dir)
+        FileUtils.mkdir_p(dir)
       end
       forward[:server] = UNIXServer.new(fn)
     else
