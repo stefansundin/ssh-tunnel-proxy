@@ -6,6 +6,9 @@ require "net/ssh"
 require "net/ssh/proxy/jump"
 require "toml-rb"
 
+STDOUT.sync = true
+STDERR.sync = true
+
 Thread.abort_on_exception = true
 
 # Monkeypatch a new method into net-ssh that receives a socket
