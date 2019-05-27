@@ -162,7 +162,7 @@ end
 config[:tunnel] ||= []
 config[:import_hosts] ||= []
 config[:timeout] ||= nil
-tunnels = config[:tunnel]
+tunnels = config[:tunnel].select { |t| t[:forward] != nil }
 
 if config[:import_all_hosts]
   # This is a bit ugly, not sure I want to keep it
