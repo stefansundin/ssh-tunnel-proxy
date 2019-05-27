@@ -1,7 +1,6 @@
 source "https://rubygems.org"
 
-gem "net-ssh", "~> 4.2.0"
-gem "rbnacl", "< 5.0", ">= 3.2.0"
-gem "rbnacl-libsodium"
+gem "net-ssh", "~> 5.2.0"
+gem "ed25519"
 gem "bcrypt_pbkdf"
 gem "toml-rb"
