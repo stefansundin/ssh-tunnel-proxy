@@ -12,6 +12,13 @@ STDERR.sync = true
 
 Thread.abort_on_exception = true
 
+# https://github.com/rails/rails/blob/master/activesupport/lib/active_support/core_ext/hash/except.rb
+class Hash
+  def except(*keys)
+    slice(*self.keys - keys)
+  end
+end
+
 # Monkeypatch a new method into net-ssh that receives a socket
 module Net; module SSH; module Service
   class Forward
@@ -287,9 +294,23 @@ trap("INT") do
   exit
 end
 
-if tunnels.empty?
+if tunnels.empty? && !config[:control_socket]
   puts "There are no tunnels defined. Exiting."
   exit(1)
+end
+
+if config[:control_socket]
+  fn = File.expand_path(config[:control_socket])
+  if File.exist?(fn)
+    abort "Error: Refusing to clean up existing file #{fn} since it is not a socket file. Please move or delete it manually." if !File.socket?(fn)
+    File.delete(fn)
+  end
+  dir = File.dirname(File.expand_path(fn))
+  if !File.directory?(dir)
+    FileUtils.mkdir_p(dir)
+  end
+  puts "Control socket: #{fn}"
+  config[:control_socket] = UNIXServer.new(fn)
 end
 
 tunnels.each do |tunnel|
@@ -319,6 +340,7 @@ end
 
 loop do
   sockets = tunnels.select { |t| !t[:thread] }.map { |t| t[:forward].map { |f| f[:server] } }.flatten
+  sockets.push(config[:control_socket]) if config[:control_socket]
   result = IO.select(sockets, nil, nil, 1)
   if result == nil && config[:timeout]
     a_while_ago = Time.now - config[:timeout]
@@ -332,12 +354,86 @@ loop do
   end
   next if result == nil
   result[0].each do |sock|
+    # Control socket
+    if sock == config[:control_socket]
+      puts "Connection on control socket."
+      client = sock.accept
+      data = client.read
+      client.close
+
+      if data == "print_config"
+        puts tunnels.inspect
+        next
+      end
+      puts "New configuration:"
+      puts data
+
+      new_config = TomlRB.parse(data, symbolize_keys: true)
+      new_config[:tunnel].each do |new_tunnel|
+        tunnel_config = new_tunnel.except(:forward)
+        existing_tunnel = tunnels.find { |t| t.except(:forward, :thread) == tunnel_config }
+        if existing_tunnel
+          puts "Adding to existing tunnel."
+          tunnel = existing_tunnel
+          new_tunnel[:forward].reject! do |forward|
+            if tunnel[:forward].any? { |f| f.except(:server) == forward }
+              puts "Tunnel already configured. Ignoring: #{forward.inspect}"
+              next true
+            end
+            next false
+          end
+          if new_tunnel[:forward].empty?
+            puts "No tunnels left."
+            next
+          end
+        else
+          tunnel = tunnel_config
+          tunnel[:forward] = []
+        end
+
+        new_tunnel[:forward].each do |forward|
+          if forward[:local_socket]
+            fn = File.expand_path(forward[:local_socket])
+            if File.exist?(fn)
+              abort "Error: Refusing to clean up existing file #{fn} since it is not a socket file. Please move or delete it manually." if !File.socket?(fn)
+              File.delete(fn)
+            end
+            dir = File.dirname(File.expand_path(fn))
+            if !File.directory?(dir)
+              FileUtils.mkdir_p(dir)
+            end
+            forward[:server] = UNIXServer.new(fn)
+          else
+            forward[:server] = TCPServer.new(forward[:local_interface], forward[:local_port])
+          end
+          forward[:server].listen(128)
+          if forward[:type] == "dynamic"
+            puts "Forwarding #{forward[:local_interface]}:#{forward[:local_port]} (dynamic) via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+          else
+            puts "Forwarding #{forward[:local_socket] || "#{forward[:local_interface]}:#{forward[:local_port]}"} to #{forward[:remote_socket] || "#{forward[:remote_host]}:#{forward[:remote_port]}"} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
+          end
+        end
+
+        tunnel[:forward].push(*new_tunnel[:forward])
+        if tunnel[:thread]
+          tunnel[:thread][:new_forwards] = new_tunnel[:forward]
+        end
+
+        if !existing_tunnel
+          tunnels.push(tunnel)
+        end
+      end
+      next
+    end
+
+    # Tunnels
     tunnels.each do |tunnel|
       if tunnel[:forward].map { |f| f[:server] }.include?(sock)
         puts "Opening SSH connection to #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}..."
         tunnel[:thread] = Thread.new do
           begin
             Thread.current[:active] = false
+            Thread.current[:new_forwards] = tunnel[:forward]
             Thread.current[:conns] = []
             Thread.current[:last_activity] = Time.now
             opts = {}
@@ -348,18 +444,21 @@ loop do
               opts[:proxy] = Net::SSH::Proxy::Jump.new(tunnel[:proxy_jump])
             end
             ssh = Net::SSH.start(tunnel[:host], tunnel[:user], opts)
-            tunnel[:forward].each do |forward|
-              if forward[:type] == "dynamic"
-                ssh.forward.dynamic2(forward[:server])
-              elsif forward[:remote_socket]
-                ssh.forward.local2(forward[:server], forward[:remote_socket])
-              else
-                ssh.forward.local2(forward[:server], forward[:remote_host], forward[:remote_port])
-              end
-            end
             # process SSH communication
             Thread.current[:active] = true
             while Thread.current[:active] do
+              if !Thread.current[:new_forwards].empty?
+                Thread.current[:new_forwards].each do |forward|
+                  if forward[:type] == "dynamic"
+                    ssh.forward.dynamic2(forward[:server])
+                  elsif forward[:remote_socket]
+                    ssh.forward.local2(forward[:server], forward[:remote_socket])
+                  else
+                    ssh.forward.local2(forward[:server], forward[:remote_host], forward[:remote_port])
+                  end
+                end
+                Thread.current[:new_forwards] = []
+              end
               ssh.process(0.01)
               Thread.pass
             end

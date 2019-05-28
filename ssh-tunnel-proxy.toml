@@ -4,6 +4,8 @@ import_hosts = ["dev1", "dev2"]
 import_all_hosts = true
 # Time (in seconds) to keep a tunnel with no connections open before closing it:
 timeout = 300
+# Control socket (expert setting - create new tunnels on the fly)
+control_socket = "~/.ssh/ssh-tunnel-proxy.sock"
 
 [[tunnel]]
 user = "my_username"
