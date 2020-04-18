@@ -35,3 +35,12 @@ sudo systemctl enable ssh-tunnel-proxy
 ```
 
 Please note that the systemd service will try to load the configuration from `/etc/ssh-tunnel-proxy.toml`, and you will not be able to use `~` in paths, and you have to manually specify the location of your ssh keys.
+
+# Troubleshooting
+
+If you have a lot of tunnels, then you will eventually need to increase the file descriptor limit:
+
+```
+# run before you start the program:
+ulimit -n 4096
+```

@@ -335,6 +335,9 @@ tunnels.each do |tunnel|
     else
       puts "Forwarding #{forward[:local_socket] || "#{forward[:local_interface]}:#{forward[:local_port]}"} to #{forward[:remote_socket] || "#{forward[:remote_host]}:#{forward[:remote_port]}"} via #{tunnel[:host]}#{tunnel[:proxy_jump] ? " (via proxy #{tunnel[:proxy_jump]})":""}"
     end
+  rescue Errno::EMFILE => e
+    puts "Too many files open. Please increase the file descriptor limit with 'ulimit -n 4096'. Current limit: #{Process.getrlimit(Process::RLIMIT_NOFILE)}."
+    raise
   end
 end
 
@@ -463,6 +466,9 @@ loop do
               Thread.pass
             end
             ssh.close
+          rescue Errno::EMFILE => e
+            puts "Too many files open. Please increase the file descriptor limit with 'ulimit -n 4096'. Current limit: #{Process.getrlimit(Process::RLIMIT_NOFILE)}."
+            raise
           rescue => e
             puts "Exception in SSH thread: #{e}"
             if !Thread.current[:active]
