@@ -277,7 +277,24 @@ config[:import_hosts].each do |host|
 end
 
 tunnels.each do |tunnel|
-  tunnel[:opts][:verbose] = tunnel[:opts][:verbose].to_sym if tunnel[:opts] && tunnel[:opts][:verbose]
+  if tunnel[:opts]
+    tunnel[:opts][:verbose] = tunnel[:opts][:verbose].to_sym if tunnel[:opts][:verbose]
+    tunnel[:opts][:verify_host_key] = tunnel[:opts][:verify_host_key].to_sym if tunnel[:opts][:verify_host_key]
+  end
+end
+
+if config[:global]
+  if config[:global][:opts] && config[:global][:opts][:verify_host_key]
+    config[:global][:opts][:verify_host_key] = config[:global][:opts][:verify_host_key].to_sym
+  end
+  tunnels.each do |tunnel|
+    if config[:global][:user] && !tunnel[:user]
+      tunnel[:user] = config[:global][:user]
+    end
+    if config[:global][:opts]
+      tunnel[:opts] = config[:global][:opts].merge(tunnel[:opts] || {})
+    end
+  end
 end
 
 trap("INT") do

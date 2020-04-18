@@ -7,6 +7,11 @@ timeout = 300
 # Control socket (expert setting - create new tunnels on the fly)
 control_socket = "~/.ssh/ssh-tunnel-proxy.sock"
 
+[global]
+user = "my_username"
+[global.opts]
+verify_host_key = "never"
+
 [[tunnel]]
 user = "my_username"
 host = "dev1.example.com"
