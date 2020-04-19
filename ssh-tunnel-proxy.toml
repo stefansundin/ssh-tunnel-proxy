@@ -51,7 +51,7 @@ remote_socket = "/var/run/nginx.sock"
 user = "my_username"
 host = "dev2.example.com"
 proxy_jump = "my_username@bastion.example.com"
-[tunnel.opts] # Additional options to net-ssh, see: https://net-ssh.github.io/ssh/v2/api/classes/Net/SSH.html#M000002
+[tunnel.opts] # Additional options to net-ssh, see: https://net-ssh.github.io/net-ssh/Net/SSH.html#method-c-start
 port = 2222
 keys = ["~/.ssh/my_key"]
 verbose = "info"
