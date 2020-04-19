@@ -1,3 +1,9 @@
+ssh-tunnel-proxy (0.0.7) bionic; urgency=medium
+
+  * Update to v0.0.7.
+
+ -- Stefan Sundin <stefan@stefansundin.com>  Sat, 18 Apr 2020 23:26:13 -0700
+
 ssh-tunnel-proxy (0.0.6) xenial; urgency=medium
 
   * Update to v0.0.6.
