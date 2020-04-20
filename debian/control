@@ -3,7 +3,7 @@ Section: net
 Priority: optional
 Maintainer: Stefan Sundin <stefan@stefansundin.com>
 Build-Depends: debhelper (>= 9)
-Standards-Version: 3.9.8
+Standards-Version: 4.4.0
 Homepage: https://github.com/stefansundin/ssh-tunnel-proxy
 
 Package: ssh-tunnel-proxy
